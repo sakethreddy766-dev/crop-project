@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ crop[0] }}{% endblock %}
+{% block title %}{{ crop['name'] }}{% endblock %}
 
 {% block content %}
 
@@ -10,112 +10,114 @@
 
         <div class="crop-detail-image">
 
-            {% if crop[0] == "Rice" %}
+            {% if crop['name'] == "Rice" %}
                 <img src="{{ url_for('static', filename='images/Crops/rice.jpg') }}">
 
-            {% elif crop[0] == "Wheat" %}
+            {% elif crop['name'] == "Wheat" %}
                 <img src="{{ url_for('static', filename='images/Crops/wheat.jpg') }}">
 
-            {% elif crop[0] == "Tomato" %}
+            {% elif crop['name'] == "Tomato" %}
                 <img src="{{ url_for('static', filename='images/Crops/tomato.jpg') }}">
 
-            {% elif crop[0] == "Potato" %}
+            {% elif crop['name'] == "Potato" %}
                 <img src="{{ url_for('static', filename='images/Crops/potato.jpg') }}">
 
-            {% elif crop[0] == "Maize" %}
+            {% elif crop['name'] == "Maize" %}
                 <img src="{{ url_for('static', filename='images/Crops/maize.jpg') }}">
 
             {% endif %}
 
         </div>
 
+
         <div class="crop-content">
 
             <span class="crop-tag">
-
-                {{ crop[2] }}
-
+                {{ crop['category'] }}
             </span>
 
-            <h1>{{ crop[0] }}</h1>
+            <h1>{{ crop['name'] }}</h1>
 
             <p>
-
-                {{ crop[1] }}
-
+                {{ crop['description'] }}
             </p>
 
         </div>
 
     </div>
 
+
     <div class="info-grid">
 
         <div class="info-box">
             <h3>Climate</h3>
-            <p>{{ crop[3] }}</p>
+            <p>{{ crop['climate'] }}</p>
         </div>
 
         <div class="info-box">
             <h3>Temperature</h3>
-            <p>{{ crop[4] }}</p>
+            <p>{{ crop['temperature'] }}</p>
         </div>
 
         <div class="info-box">
             <h3>Rainfall</h3>
-            <p>{{ crop[5] }}</p>
+            <p>{{ crop['rainfall'] }}</p>
         </div>
 
         <div class="info-box">
             <h3>Soil Type</h3>
-            <p>{{ crop[6] }}</p>
+            <p>{{ crop['soil_type'] }}</p>
         </div>
 
         <div class="info-box">
             <h3>Soil pH</h3>
-            <p>{{ crop[7] }}</p>
+            <p>{{ crop['soil_ph'] }}</p>
         </div>
 
         <div class="info-box">
             <h3>Growing Season</h3>
-            <p>{{ crop[8] }}</p>
+            <p>{{ crop['growing_season'] }}</p>
         </div>
 
         <div class="info-box">
             <h3>Sowing Time</h3>
-            <p>{{ crop[9] }}</p>
+            <p>{{ crop['sowing_time'] }}</p>
         </div>
 
         <div class="info-box">
             <h3>Harvest Time</h3>
-            <p>{{ crop[10] }}</p>
+            <p>{{ crop['harvest_time'] }}</p>
         </div>
 
     </div>
+
 
     <div class="content-card">
 
         <h2>Recommended Fertilizer</h2>
 
-        <p>{{ crop[11] }}</p>
+        <p>{{ crop['fertilizer'] }}</p>
 
     </div>
+
 
     <div class="content-card">
 
         <h2>Uses</h2>
 
-        <p>{{ crop[12] }}</p>
+        <p>{{ crop['uses'] }}</p>
 
     </div>
+
 
     <div class="content-card">
 
         <h2>Disease Prevention</h2>
 
-        <p>{{ crop[13] }}</p>
+        <p>{{ crop['prevention'] }}</p>
 
     </div>
+
 
     <div class="content-card">
 
@@ -127,7 +129,7 @@
 
             {% for disease in diseases %}
 
-            <li>{{ disease[0] }}</li>
+            <li>{{ disease['name'] }}</li>
 
             {% endfor %}
 
@@ -141,18 +143,15 @@
 
     </div>
 
+
     <div class="crop-actions">
 
         <a href="{{ url_for('search') }}" class="btn-green">
-
             Search Diseases
-
         </a>
 
         <a href="{{ url_for('index') }}" class="btn-outline">
-
             Back Home
-
         </a>
 
     </div>
