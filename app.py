@@ -1,6 +1,4 @@
-import psycopg
-from psycopg.rows import dict_row
-from psycopg.errors import UniqueViolation
+import sqlite3
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from config import Config
@@ -15,25 +13,24 @@ app.secret_key = "crop-project-secret-key"
 # =====================================================
 
 def get_db():
-    return psycopg.connect(
-        app.config["DATABASE_URL"],
-        row_factory=dict_row
-    )
+    conn = sqlite3.connect(app.config["DATABASE"])
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
 def init_db():
     conn = get_db()
 
-    conn.execute("""
+    conn.executescript("""
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             email TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS crops (
-            id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT UNIQUE NOT NULL,
             description TEXT,
             scientific_name TEXT,
@@ -51,8 +48,8 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS diseases (
-            id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-            crop_id INTEGER REFERENCES crops(id),
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            crop_id INTEGER,
             name TEXT,
             symptoms TEXT,
             cause TEXT,
@@ -62,21 +59,21 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS symptoms (
-            id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT UNIQUE
         );
 
         CREATE TABLE IF NOT EXISTS disease_symptoms (
-            disease_id INTEGER REFERENCES diseases(id),
-            symptom_id INTEGER REFERENCES symptoms(id),
+            disease_id INTEGER,
+            symptom_id INTEGER,
             PRIMARY KEY (disease_id, symptom_id)
         );
 
         CREATE TABLE IF NOT EXISTS records (
-            id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             farmer TEXT,
-            crop_id INTEGER REFERENCES crops(id),
-            disease_id INTEGER REFERENCES diseases(id),
+            crop_id INTEGER,
+            disease_id INTEGER,
             area REAL,
             date TEXT,
             severity TEXT,
@@ -84,10 +81,7 @@ def init_db():
         );
     """)
 
-    # -------------------------------------------------
-    # CROPS
-    # -------------------------------------------------
-
+    # Crop data
     crops = [
         ("Rice", "An important cereal crop grown mainly in warm and humid conditions.",
          "Oryza sativa", "Warm and humid", "20-35°C", "1000-2000 mm",
@@ -112,9 +106,9 @@ def init_db():
 
         ("Maize", "An important cereal crop used for food and animal feed.",
          "Zea mays", "Warm", "18-27°C", "500-800 mm",
-         "Well-drained loamy soil", "5.5-7.0", "Kharif/Rabi",
-         "June-July", "September-October",
-         "NPK fertilizer and nitrogen", "Food, animal feed and industrial products",
+         "Well-drained loamy soil", "5.5-7.0", "Kharif/Rabi", "June-July",
+         "September-October", "NPK fertilizer and nitrogen",
+         "Food, animal feed and industrial products",
          "Use healthy seed, crop rotation and proper irrigation"),
 
         ("Potato", "An important tuber crop grown mainly during cool weather.",
@@ -125,20 +119,15 @@ def init_db():
          "Use certified seed, good drainage and crop rotation")
     ]
 
-    for crop in crops:
-        conn.execute("""
-            INSERT INTO crops
-            (name, description, scientific_name, climate, temperature,
-             rainfall, soil, soil_ph, season, sowing_time, harvesting_time,
-             fertilizer, uses, prevention)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (name) DO NOTHING
-        """, crop)
+    conn.executemany("""
+        INSERT OR IGNORE INTO crops
+        (name, description, scientific_name, climate, temperature, rainfall,
+         soil, soil_ph, season, sowing_time, harvesting_time, fertilizer,
+         uses, prevention)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, crops)
 
-    # -------------------------------------------------
-    # SYMPTOMS
-    # -------------------------------------------------
-
+    # Symptoms
     symptoms = [
         "Brown lesions", "Diamond-shaped lesions", "Brown spots",
         "Yellowing leaves", "Orange pustules", "White powder on leaves",
@@ -148,22 +137,19 @@ def init_db():
         "Tuber lesions", "Plant wilting"
     ]
 
-    for symptom in symptoms:
-        conn.execute("""
-            INSERT INTO symptoms (name)
-            VALUES (%s)
-            ON CONFLICT (name) DO NOTHING
-        """, (symptom,))
+    conn.executemany(
+        "INSERT OR IGNORE INTO symptoms (name) VALUES (?)",
+        [(s,) for s in symptoms]
+    )
 
-    # -------------------------------------------------
-    # DISEASES
-    # -------------------------------------------------
-
+    # Disease data
     diseases = [
         ("Rice", "Blast",
-         "Brown lesions, diamond-shaped lesions, yellowing leaves", "Fungus",
+         "Brown lesions, diamond-shaped lesions, yellowing leaves",
+         "Fungus",
          "Use recommended fungicides and follow agricultural guidance.",
-         "Use resistant varieties, healthy seed and balanced fertilizer.", "High"),
+         "Use resistant varieties, healthy seed and balanced fertilizer.",
+         "High"),
 
         ("Rice", "Brown Spot",
          "Brown spots, yellowing leaves", "Fungus",
@@ -223,27 +209,27 @@ def init_db():
          "Use certified seed and practice crop rotation.", "High")
     ]
 
+    # Insert diseases only if they don't already exist.
+    # This prevents duplicates.
     for disease in diseases:
         crop = conn.execute(
-            "SELECT id FROM crops WHERE name = %s",
-            (disease[0],)
+            "SELECT id FROM crops WHERE name = ?", (disease[0],)
         ).fetchone()
 
         if crop:
-            conn.execute("""
-                INSERT INTO diseases
-                (crop_id, name, symptoms, cause, treatment, prevention, severity)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT DO NOTHING
-            """, (
-                crop["id"], disease[1], disease[2], disease[3],
-                disease[4], disease[5], disease[6]
-            ))
+            exists = conn.execute("""
+                SELECT id FROM diseases
+                WHERE crop_id = ? AND name = ?
+            """, (crop["id"], disease[1])).fetchone()
 
-    # -------------------------------------------------
-    # CONNECT DISEASES WITH SYMPTOMS
-    # -------------------------------------------------
+            if not exists:
+                conn.execute("""
+                    INSERT INTO diseases
+                    (crop_id, name, symptoms, cause, treatment, prevention, severity)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (crop["id"], *disease[1:]))
 
+    # Disease -> symptoms
     connections = {
         "Blast": ["Brown lesions", "Diamond-shaped lesions", "Yellowing leaves"],
         "Brown Spot": ["Brown spots", "Yellowing leaves"],
@@ -261,22 +247,22 @@ def init_db():
 
     for disease_name, symptom_list in connections.items():
         disease = conn.execute(
-            "SELECT id FROM diseases WHERE name = %s",
+            "SELECT id FROM diseases WHERE name = ?",
             (disease_name,)
         ).fetchone()
 
         if disease:
             for symptom_name in symptom_list:
                 symptom = conn.execute(
-                    "SELECT id FROM symptoms WHERE name = %s",
+                    "SELECT id FROM symptoms WHERE name = ?",
                     (symptom_name,)
                 ).fetchone()
 
                 if symptom:
                     conn.execute("""
-                        INSERT INTO disease_symptoms (disease_id, symptom_id)
-                        VALUES (%s, %s)
-                        ON CONFLICT DO NOTHING
+                        INSERT OR IGNORE INTO disease_symptoms
+                        (disease_id, symptom_id)
+                        VALUES (?, ?)
                     """, (disease["id"], symptom["id"]))
 
     conn.commit()
@@ -285,12 +271,13 @@ def init_db():
 
 
 # =====================================================
-# LOGIN / REGISTER
+# AUTHENTICATION
 # =====================================================
 
 @app.before_request
 def auth():
-    if request.endpoint not in ["login", "register", "static"] and "user_id" not in session:
+    public = ["login", "register", "static"]
+    if request.endpoint not in public and "user_id" not in session:
         return redirect(url_for("login"))
 
 
@@ -306,15 +293,13 @@ def register():
         try:
             conn.execute("""
                 INSERT INTO users (username, email, password)
-                VALUES (%s, %s, %s)
+                VALUES (?, ?, ?)
             """, (username, email, generate_password_hash(password)))
-
             conn.commit()
             conn.close()
             return redirect(url_for("login"))
 
-        except UniqueViolation:
-            conn.rollback()
+        except sqlite3.IntegrityError:
             conn.close()
             return render_template(
                 "register.html",
@@ -332,8 +317,7 @@ def login():
 
         conn = get_db()
         user = conn.execute(
-            "SELECT * FROM users WHERE email = %s",
-            (email,)
+            "SELECT * FROM users WHERE email = ?", (email,)
         ).fetchone()
         conn.close()
 
@@ -397,16 +381,18 @@ def search():
         search_performed = True
 
         if crop_id and symptom_ids:
-            placeholders = ",".join(["%s"] * len(symptom_ids))
+            placeholders = ",".join("?" * len(symptom_ids))
 
             query = f"""
                 SELECT DISTINCT
                     d.id, d.name, d.symptoms, d.cause,
                     d.treatment, d.prevention, d.severity
                 FROM diseases d
-                JOIN disease_symptoms ds ON d.id = ds.disease_id
-                WHERE d.crop_id = %s
+                JOIN disease_symptoms ds
+                    ON d.id = ds.disease_id
+                WHERE d.crop_id = ?
                 AND ds.symptom_id IN ({placeholders})
+                ORDER BY d.name
             """
 
             diseases = conn.execute(
@@ -433,18 +419,25 @@ def disease_detail(disease_id):
     conn = get_db()
 
     disease = conn.execute("""
-        SELECT d.id, d.name, d.symptoms, d.cause, d.treatment,
-               d.prevention, d.severity, c.name AS crop_name
+        SELECT
+            d.id,
+            d.name,
+            d.symptoms,
+            d.cause,
+            d.treatment,
+            d.prevention,
+            d.severity,
+            c.name AS crop_name
         FROM diseases d
         JOIN crops c ON d.crop_id = c.id
-        WHERE d.id = %s
+        WHERE d.id = ?
     """, (disease_id,)).fetchone()
 
     symptoms = conn.execute("""
         SELECT s.name
         FROM symptoms s
         JOIN disease_symptoms ds ON s.id = ds.symptom_id
-        WHERE ds.disease_id = %s
+        WHERE ds.disease_id = ?
     """, (disease_id,)).fetchall()
 
     conn.close()
@@ -488,12 +481,14 @@ def crop_details(crop_id):
                rainfall, soil, soil_ph, season, sowing_time,
                harvesting_time, fertilizer, uses, prevention
         FROM crops
-        WHERE id = %s
+        WHERE id = ?
     """, (crop_id,)).fetchone()
 
     diseases = conn.execute("""
-        SELECT name FROM diseases
-        WHERE crop_id = %s
+        SELECT name
+        FROM diseases
+        WHERE crop_id = ?
+        GROUP BY name
         ORDER BY name
     """, (crop_id,)).fetchall()
 
@@ -521,10 +516,8 @@ def record():
         SELECT id, name FROM crops ORDER BY name
     """).fetchall()
 
-    diseases = conn.execute("""
-        SELECT id, name FROM diseases ORDER BY name
-    """).fetchall()
-
+    # Diseases are loaded through the API after crop selection.
+    diseases = []
     message = None
 
     if request.method == "POST":
@@ -541,17 +534,16 @@ def record():
                 conn.execute("""
                     INSERT INTO records
                     (farmer, crop_id, disease_id, area, date, severity, notes)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    farmer, crop_id, disease_id, float(area),
-                    date, severity, notes
+                    farmer, crop_id, disease_id,
+                    float(area), date, severity, notes
                 ))
 
                 conn.commit()
                 message = "Record saved successfully!"
 
             except Exception as e:
-                conn.rollback()
                 message = "Error: " + str(e)
         else:
             message = "Please fill all required fields!"
@@ -575,9 +567,15 @@ def view_records():
     conn = get_db()
 
     records = conn.execute("""
-        SELECT r.id, r.farmer, c.name AS crop_name,
-               d.name AS disease_name, r.area, r.date,
-               r.severity, r.notes
+        SELECT
+            r.id,
+            r.farmer,
+            c.name AS crop_name,
+            d.name AS disease_name,
+            r.area,
+            r.date,
+            r.severity,
+            r.notes
         FROM records r
         JOIN crops c ON r.crop_id = c.id
         JOIN diseases d ON r.disease_id = d.id
@@ -593,7 +591,7 @@ def view_records():
 
 
 # =====================================================
-# API
+# API - DISEASES BY CROP
 # =====================================================
 
 @app.route("/api/diseases/<int:crop_id>")
@@ -601,17 +599,18 @@ def get_diseases_by_crop(crop_id):
     conn = get_db()
 
     diseases = conn.execute("""
-        SELECT id, name
+        SELECT MIN(id) AS id, name
         FROM diseases
-        WHERE crop_id = %s
+        WHERE crop_id = ?
+        GROUP BY name
         ORDER BY name
     """, (crop_id,)).fetchall()
 
     conn.close()
 
     return jsonify([
-        {"id": disease["id"], "name": disease["name"]}
-        for disease in diseases
+        {"id": d["id"], "name": d["name"]}
+        for d in diseases
     ])
 
 
@@ -630,14 +629,10 @@ def internal_error(error):
 
 
 # =====================================================
-# START APPLICATION
+# START
 # =====================================================
 
 init_db()
 
 if __name__ == "__main__":
-    app.run(
-        debug=True,
-        host="0.0.0.0",
-        port=5000
-    )
+    app.run(debug=True, host="0.0.0.0", port=5000)

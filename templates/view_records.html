@@ -3,17 +3,12 @@
 {% block title %}View Records - Crop Disease Platform{% endblock %}
 
 {% block content %}
-
 <div class="records-container">
-
     <h1>Disease Records</h1>
-
+    
     {% if records %}
-
     <div class="records-table-wrapper">
-
         <table class="records-table">
-
             <thead>
                 <tr>
                     <th>Farmer Name</th>
@@ -25,68 +20,25 @@
                     <th>Notes</th>
                 </tr>
             </thead>
-
             <tbody>
-
                 {% for record in records %}
-
                 <tr>
-
-                    <td>
-                        {{ record['farmer'] }}
-                    </td>
-
-                    <td>
-                        {{ record['crop_name'] }}
-                    </td>
-
-                    <td>
-                        {{ record['disease_name'] }}
-                    </td>
-
-                    <td>
-                        {{ "%.2f"|format(record['area']) }}
-                    </td>
-
-                    <td>
-                        {{ record['date'] }}
-                    </td>
-
-                    <td>
-                        <span class="severity-{{ record['severity']|lower if record['severity'] else 'none' }}">
-                            {{ record['severity'] or 'N/A' }}
-                        </span>
-                    </td>
-
-                    <td>
-                        {{ record['notes'] or '-' }}
-                    </td>
-
+                    <td>{{ record[1] }}</td>
+                    <td>{{ record[2] }}</td>
+                    <td>{{ record[3] }}</td>
+                    <td>{{ "%.2f"|format(record[4]) }}</td>
+                    <td>{{ record[5] }}</td>
+                    <td><span class="severity-{{ record[6]|lower if record[6] else 'none' }}">{{ record[6] or 'N/A' }}</span></td>
+                    <td>{{ record[7] or '-' }}</td>
                 </tr>
-
                 {% endfor %}
-
             </tbody>
-
         </table>
-
     </div>
-
     {% else %}
-
     <div class="alert alert-info">
-
-        <p>
-            No records found.
-            <a href="{{ url_for('record') }}">
-                Create a new record
-            </a>
-        </p>
-
+        <p>No records found. <a href="{{ url_for('record') }}">Create a new record</a></p>
     </div>
-
     {% endif %}
-
 </div>
-
 {% endblock %}

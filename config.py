@@ -1,6 +1,4 @@
 import os
 
 class Config:
-    DATABASE_URL = os.getenv(
-        "DATABASE_URL"
-    )
+    DATABASE = os.path.join(os.path.dirname(__file__), "crop_disease.db")
